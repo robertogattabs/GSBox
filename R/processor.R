@@ -57,6 +57,7 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
         scriptFullFileName <- paste(c(global.lst.tmp_folder$path,"/",scriptFileName),collapse = '')
         executionFolderName <- paste(c("run.id_",run.id),collapse = '')
         executionFolderFullName <- paste(c(global.lst.tmp_folder$path,"/",executionFolderName),collapse = '')
+
         # check the presence of the expected files
         if( !file.exists(scriptFullFileName) ) stop("ERROR : the .R is missing")
 
@@ -112,7 +113,6 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
       # -----------------------------------------------------------------------
       # PACKAGING dei risultati
       # -----------------------------------------------------------------------
-      # unlink(paste(c(global.lst.output_folder$path,"/*"),collapse = ''),recursive = TRUE)
       lst.zipped.files.to.move <-  unique(lst.zipped.files.to.move)
 
       for( file2Move in lst.zipped.files.to.move) {
@@ -153,7 +153,6 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
 
   }
   loadParamfileName <- function( parameterFileName ) {
-    # parameterFileName <- "C://projects/temp/tempFolder/run/run.id_1.txt"
 
     fileConn <- file(parameterFileName)
     lst.lines <- readLines(fileConn)
@@ -172,7 +171,6 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
     tmpFolder <- global.lst.tmp_folder$path
 
     # vuota la tmpFolder
-    # unlink(  paste(c( tmpFolder, "/*"),collapse = '') , recursive = TRUE)
     cleanUp.tmp.folders()
 
     # sposta il file e rimuovilo dalla inputFolder
@@ -185,7 +183,6 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
 
     # carica il objXML e costruisci una struttura con i servizi richiesti (lst.servizio)
     # dopo aver letto l'XML
-
     objXML <- xmlInternalTreeParse(file = paste(c(tmpFolder,"/","description.xml"),collapse = ''))
 
     tokenInstanceUID <- unlist(xpathApply(objXML,path="/xml/XMLheader/tokenInstanceUID",xmlValue))
@@ -336,13 +333,8 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
     global.sync.tmp_folder <<- list( "path" = sync_folder.dir )
     global.lst.cache_folder <<- list( "path" = cache_folder )
 
+    # Pulisci le cartelle temporanee
     cleanUp.tmp.folders()
-
-    # if(dir.exists(global.lst.tmp_folder$path)== FALSE) { dir.create(global.lst.tmp_folder$path) }
-    # if(dir.exists(global.lst.tmp_folder$pathEnv)== FALSE) { dir.create(global.lst.tmp_folder$pathEnv) }
-    # if(dir.exists(global.lst.tmp_folder$path)== FALSE) stop("ERROR: global.lst.tmp_folder$path not created")
-    # if(dir.exists(global.lst.tmp_folder$pathEnv)== FALSE) stop("ERROR: global.lst.tmp_folder$pathEnv not created")
-
 
     # set the machine to state READY
     set.current.state("READY")
