@@ -5,7 +5,7 @@
 #'              The consturctor admit the following parameters:
 #' parameters.list a list containing possible parameters to tune the model.
 #' @param parameters.list a list containing the parameters. The possible ones are: 'considerAutoLoop' and 'threshold'. 'considerAutoLoop' is a boolean which indicates if the autoloops have to be admitted, while 'threshold' is the minimum value that a probability should have to do not be set to zero, in the transition matrix.
-#' @import stringr XML zip
+#' @import stringr XML zip jsonlite
 #' @export
 #'
 processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_folder.dir=NA,
@@ -49,6 +49,7 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
         stop("ERROR: only one script per time, in the current version")
       }
       for( run.id in names(res$lst.run)) {
+        tokenInstanceUID <- paste(c(format(Sys.Date(), format = "%Y%m%d%H%m%s"),"_",runif(n = 1,0,100000)),collapse = '')
         # prendi lo script e guarda il tipo
         scriptAlias <- res$lst.run[[run.id]]$scriptAlias
         scriptType <- res$lst.script[[ scriptAlias ]]$scriptType
@@ -57,7 +58,6 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
         executionFolderName <- paste(c("run.id_",run.id),collapse = '')
         executionFolderFullName <- paste(c(global.lst.tmp_folder$path,"/",executionFolderName),collapse = '')
         # check the presence of the expected files
-        # browser()
         if( !file.exists(scriptFullFileName) ) stop("ERROR : the .R is missing")
 
         # ok, prepara l'env per eseguire lo script
@@ -66,26 +66,63 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
 
         dir.create(executionFolderFullName)
         if( !dir.exists(executionFolderFullName) ) stop("ERROR : not able to build the executionFolder.. ")
-        browser()
 
         setwd( global.lst.tmp_folder$path  )
 
-        filettoneR <- readLines(scriptFileName)
-        filettoneR <- str_replace_all(filettoneR,"##param.output.folderName##",executionFolderName)
-        fileConn<-file(scriptFileName)
-        writeLines(filettoneR, fileConn)
+        # componi il file di passaggio parameetri: metti tutte le tag del RUN
+        cosa <- res$lst.header
+        arr.stringa.0 <- unlist(lapply(1:length(cosa),function(i) {  paste(c(names(cosa)[i]," = ",cosa[[i]]),collapse='') }))
+        cosa <- res$lst.run[[run.id]]
+        arr.stringa.1 <- unlist(lapply(1:length(cosa),function(i) {  paste(c(names(cosa)[i]," = ",cosa[[i]]),collapse='') }))
+        cosa <- res$lst.script[[ res$lst.run[[run.id]]$scriptAlias ]]
+        arr.stringa.2 <- unlist(lapply(1:length(cosa),function(i) {  paste(c(names(cosa)[i]," = ",cosa[[i]]),collapse='') }))
+        arr.stringa.tot <- c( arr.stringa.0, arr.stringa.1 , arr.stringa.2)
+
+        parameterFileName <- paste(c(executionFolderFullName,".txt"),collapse = '')
+        fileConn <- file(parameterFileName)
+        lst.parameter <- list("header"=list("run.id"=run.id,"executionFolderFullName"=executionFolderFullName,"tokenInstanceUID"=tokenInstanceUID),"payload"=res)
+        writeLines(prettify(toJSON(lst.parameter)),fileConn)
         close(fileConn)
 
         source(scriptFileName)
+        eval(parse(text = paste(c("main(paramfileName = '",parameterFileName,"')"),collapse = '')))
 
         setwd( currentWD  )
-        browser()
+        load(  paste(c(global.lst.tmp_folder$pathEnv,"/runningEnv.RData"),collapse = '')  )
 
+        # -----------------------------------------------------------------------
+        # ZIP del risultato
+        # -----------------------------------------------------------------------
+        zipFile <- paste( c(global.lst.tmp_folder$path,"/",tokenInstanceUID,".zip"), collapse = '')
 
+        listaFilesDaZippare <- list.files(executionFolderFullName)
+        lst.zipped.files.to.move <- c()
+
+        for( i in 1:length(listaFilesDaZippare)) {
+          nomeF <- listaFilesDaZippare[i]
+          if(i==1) {
+            zipr(zipfile = zipFile, files = paste(c(executionFolderFullName,"/",nomeF),collapse=''), recurse = TRUE, compression_level = 9)
+          } else {
+            zipr_append(zipfile = zipFile, files = paste(c(executionFolderFullName,"/",nomeF),collapse=''), recurse = TRUE, compression_level = 9)
+          }
+        }
+        lst.zipped.files.to.move <- c( lst.zipped.files.to.move , zipFile )
       }
 
+      # -----------------------------------------------------------------------
+      # PACKAGING dei risultati
+      # -----------------------------------------------------------------------
+      # unlink(paste(c(global.lst.output_folder$path,"/*"),collapse = ''),recursive = TRUE)
+      lst.zipped.files.to.move <-  unique(lst.zipped.files.to.move)
 
+      for( file2Move in lst.zipped.files.to.move) {
+        nomeSemplice <- substr( file2Move , max(unlist(str_locate_all(file2Move,"/")))+1, str_length(file2Move) )
+        destinazione <- paste(c(global.lst.output_folder$path,"/",nomeSemplice),collapse = '')
+        file.copy(from = file2Move,to = destinazione)
+        file.remove(file2Move)
+      }
     }
+
   }
 
   checkInputFolder <- function( inputFolder , timeForSleepint = 2 ) {
@@ -115,6 +152,21 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
                   "fullFileName" = whichFileName))
 
   }
+  loadParamfileName <- function( parameterFileName ) {
+    # parameterFileName <- "C://projects/temp/tempFolder/run/run.id_1.txt"
+
+    fileConn <- file(parameterFileName)
+    lst.lines <- readLines(fileConn)
+    close(fileConn)
+
+    lst.par <- list()
+    for(ct.riga in 1:length(lst.lines)) {
+      riga <- str_trim(string = lst.lines[ct.riga])
+      arr.obj <- str_split(string = riga,pattern = "=")[[1]]
+      lst.par[[ str_trim(arr.obj[1]) ]] <- str_trim(arr.obj[2])
+    }
+    return(lst.par)
+  }
   openZippedPackage <- function( fileName , fullFileName ) {
 
     tmpFolder <- global.lst.tmp_folder$path
@@ -140,6 +192,12 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
     runUID <- unlist(xpathApply(objXML,path="/xml/XMLheader/runUID",xmlValue))
     creationDateTime <- unlist(xpathApply(objXML,path="/xml/XMLheader/creationDateTime",xmlValue))
 
+    lst.header <- list()
+    lst.header$tokenInstanceUID <- tokenInstanceUID
+    lst.header$runUID <- runUID
+    lst.header$creationDateTime <- creationDateTime
+
+
     # --------------------------------------------------
     # prima scorri le dataSources
     # --------------------------------------------------
@@ -155,7 +213,7 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
         if( unlist(xpathApply(subXMLDoc,path="/XMLobj/dataSourceType",xmlValue))!="csv" ) stop("ERROR : only 'csv' is supported for the 'dataSourceType' tag, in the current version")
 
         dataSourceFileName <- unlist(xpathApply(subXMLDoc,path="/XMLobj/dataSourceFileName",xmlValue))
-        dataSourceAlias <- unlist(xpathApply(subXMLDoc,path="/XMLobj/dataSourceAlias",xmlValue))
+        dataSourceAlias <- unlist(xpathApply(subXMLDoc,path="/XMLobj/alias",xmlValue))
         dataSourceType <- unlist(xpathApply(subXMLDoc,path="/XMLobj/dataSourceType",xmlValue))
 
         lst.dataSource[[dataSourceAlias]] <- list()
@@ -173,7 +231,16 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
     lst.other <- list()
     if( length(subXML) > 0 ) {
       for( ct in 1:length(subXML)) {
-       stop("ERROR : datatype 'other' Not yet supported ")
+        lst.tmp <- xmlToList(subXML[[ct]])
+        nomiCampi <- names(lst.tmp)[!(names(lst.tmp) %in% ".attrs")]
+        subXMLDoc <- xmlDoc(subXML[[ct]])
+        lst.lista.pre <- list()
+        for(i in 1:length(nomiCampi)) {
+          lst.lista.pre[[nomiCampi[i]]] <- unlist(xpathApply(subXMLDoc,path=paste(c("/XMLobj/",nomiCampi[i]),collapse = ''),xmlValue))
+        }
+        if("otherAlias" %in% names(lst.lista.pre)) { chiave <- lst.lista.pre$otherAlias
+        } else { chiave <- as.character(ct) }
+        lst.other[[chiave]] <- lst.lista.pre
       }
     }
 
@@ -187,7 +254,7 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
         subXMLDoc <- xmlDoc(subXML[[ct]])
         scriptType <- unlist(xpathApply(subXMLDoc,path="/XMLobj/scriptType",xmlValue))
         scriptFileName <- unlist(xpathApply(subXMLDoc,path="/XMLobj/scriptFileName",xmlValue))
-        scriptAlias <- unlist(xpathApply(subXMLDoc,path="/XMLobj/scriptAlias",xmlValue))
+        scriptAlias <- unlist(xpathApply(subXMLDoc,path="/XMLobj/alias",xmlValue))
         processorConformanceClass <- unlist(xpathApply(subXMLDoc,path="/XMLobj/processorConformanceClass",xmlValue))
 
         if( length(scriptAlias) != 1 ) stop("ERROR : 'scriptAlias' is a mandatory tag")
@@ -210,7 +277,8 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
     if( length(subXML) > 0 ) {
       for( ct in 1:length(subXML)) {
         subXMLDoc <- xmlDoc(subXML[[ct]])
-        runAlias <- unlist(xpathApply(subXMLDoc,path="/XMLobj/runAlias",xmlValue))
+
+        runAlias <- unlist(xpathApply(subXMLDoc,path="/XMLobj/alias",xmlValue))
         scriptAlias <- unlist(xpathApply(subXMLDoc,path="/XMLobj/scriptAlias",xmlValue))
         dataSourceAlias <- unlist(xpathApply(subXMLDoc,path="/XMLobj/dataSourceAlias",xmlValue))
         outXMLDescriptorType <- unlist(xpathApply(subXMLDoc,path="/XMLobj/outXMLDescriptorType",xmlValue))
@@ -234,7 +302,8 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
       list( "lst.dataSource" = lst.dataSource,
             "lst.other" = lst.other,
             "lst.script" = lst.script,
-            "lst.run" = lst.run
+            "lst.run" = lst.run,
+            "lst.header" = lst.header
             )
     )
 
