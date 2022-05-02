@@ -9,11 +9,13 @@
 #' @export
 #'
 processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_folder.dir=NA,
+                       RscriptPathName = NA,
                        log_folder.dir=NA, cache_folder.dir=NA , sync_folder.dir=NA ) {
 
   global.lst.log_folder <- ""
   global.lst.tmp_folder <- ""
   global.lst.cache_folder <- ""
+  global.lst.RscriptPathName <- ""
   global.sync.tmp_folder <- ""
   global.lst.input_folder <- ""
   global.lst.output_folder <- ""
@@ -81,15 +83,30 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
 
         parameterFileName <- paste(c(executionFolderFullName,".txt"),collapse = '')
         fileConn <- file(parameterFileName)
-        lst.parameter <- list("header"=list("run.id"=run.id,"executionFolderFullName"=executionFolderFullName,"tokenInstanceUID"=tokenInstanceUID),"payload"=res)
+        lst.parameter <- list("header"=list("run.id"=run.id,"currentDir"=global.lst.tmp_folder$path,"executionFolderFullName"=executionFolderFullName,"tokenInstanceUID"=tokenInstanceUID),"payload"=res)
         writeLines(prettify(toJSON(lst.parameter)),fileConn)
         close(fileConn)
 
-        source(scriptFileName)
-        eval(parse(text = paste(c("main(paramfileName = '",parameterFileName,"')"),collapse = '')))
+        ### FUNCTION ###
+        # source(scriptFileName)
+        # eval(parse(text = paste(c("main(paramfileName = '",parameterFileName,"')"),collapse = '')))
 
         setwd( currentWD  )
         load(  paste(c(global.lst.tmp_folder$pathEnv,"/runningEnv.RData"),collapse = '')  )
+
+        ### SYSTEM CALL ###
+        # RScript_path = system("which Rscript", inter = TRUE)
+        if(!is.na(global.lst.RscriptPathName$path)) {
+          RScript_path <- paste(c(global.lst.RscriptPathName$path,"/Rscript.exe"),collapse = '')
+        } else {
+          RScript_path <- "Rscript.exe"
+        }
+        fullScriptFileName <- paste(c(global.lst.tmp_folder$path,"/",scriptFileName),collapse = '')
+
+        parameterFileName_str = parameterFileName
+
+        system(paste(RScript_path, fullScriptFileName, parameterFileName_str), intern = T)
+        # system(paste(RScript_path, fullScriptFileName, parameterFileName_str), intern = F,wait = FALSE)
 
         # -----------------------------------------------------------------------
         # ZIP del risultato
@@ -317,7 +334,8 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
   # Costruttore
   # -----------------------------------------------------------
   constructor <- function( input_folder.dir , output_folder.dir , tmp_folder.dir,
-                         log_folder.dir, cache_folder, sync_folder.dir ) {
+                           RscriptPathName = RscriptPathName,
+                           log_folder.dir, cache_folder, sync_folder.dir ) {
 
     if( is.na(tmp_folder.dir) ) stop("Error: tmp_folder.dir must be specifified ")
     if( is.na(input_folder.dir) ) stop("Error: input_folder.dir must be specifified ")
@@ -332,6 +350,8 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
                                     )
     global.sync.tmp_folder <<- list( "path" = sync_folder.dir )
     global.lst.cache_folder <<- list( "path" = cache_folder )
+
+    global.lst.RscriptPathName <<- list( "path" = RscriptPathName )
 
     # Pulisci le cartelle temporanee
     cleanUp.tmp.folders()
@@ -353,7 +373,8 @@ processor <- function( input_folder.dir = NA , output_folder.dir = NA ,  tmp_fol
     }
   }
   # ===========================================================
-  constructor(input_folder.dir = input_folder.dir, output_folder.dir = output_folder.dir, cache_folder = cache_folder.dir,
+  constructor(input_folder.dir = input_folder.dir, output_folder.dir = output_folder.dir,
+              cache_folder = cache_folder.dir, RscriptPathName = RscriptPathName,
               log_folder.dir=log_folder.dir, tmp_folder.dir=tmp_folder.dir, sync_folder.dir=sync_folder.dir)
   # ===========================================================
 

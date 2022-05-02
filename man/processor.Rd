@@ -8,6 +8,7 @@ processor(
   input_folder.dir = NA,
   output_folder.dir = NA,
   tmp_folder.dir = NA,
+  RscriptPathName = NA,
   log_folder.dir = NA,
   cache_folder.dir = NA,
   sync_folder.dir = NA
